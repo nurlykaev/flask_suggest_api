@@ -22,7 +22,8 @@ class Suggest(Resource):
     _en = "qwertyuiop[]asdfghjkl;'zxcvbnm,."
     _ru = "йцукенгшщзхъфывапролджэячсмитьбю"
     pswr = {en_let: ru_let for en_let, ru_let in zip(_en, _ru)}
-    valid_chars = set(_ru + ' ')
+
+    valid_chars = set(_ru + ' ')  # для проверки корректности запроса
 
     def __init__(self):
         parser = reqparse.RequestParser()
@@ -304,7 +305,7 @@ class Suggest(Resource):
         return ''.join(let for let in word if let not in Suggest.pct)
 
 
-api.add_resource(Suggest, '/suggest')
+api.add_resource(Suggest, '/suggest', '/suggest/')
 
 if __name__ == '__main__':
     try:
