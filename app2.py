@@ -261,6 +261,6 @@ api.add_resource(Suggest, '/suggest')
 
 if __name__ == '__main__':
     try:
-        app.run(host='92.53.75.46', debug=False)
+        app.run(debug=False)
     finally:
         pass
