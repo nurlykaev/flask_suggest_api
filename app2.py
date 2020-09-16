@@ -22,13 +22,15 @@ class Suggest(Resource):
     _en = "qwertyuiop[]asdfghjkl;'zxcvbnm,."
     _ru = "йцукенгшщзхъфывапролджэячсмитьбю"
     pswr = {en_let: ru_let for en_let, ru_let in zip(_en, _ru)}
+    valid_chars = set(_ru + ' ')
 
     def __init__(self):
         parser = reqparse.RequestParser()
         parser.add_argument('phrase', type=str)
-        self.phrase = self.punto_switcher(parser.parse_args()['phrase'].lower())
-        self.words = self.phrase.split()
-        if self.words:
+        self.phrase = parser.parse_args()['phrase']
+        if self.phrase:
+            self.phrase = self.punto_switcher(self.phrase.lower())
+            self.words = self.phrase.split()
             self.search_word = self.words[-1]
             self.first_let = self.search_word[0]
             self.len_word = min(len(self.search_word), 9)
@@ -42,16 +44,37 @@ class Suggest(Resource):
         self.response = dict()
 
     def get(self):
-        if self.search_word:
+        if self.is_valid():
             self.create_properties_list()
             self.search_with_properties_list() if self.properties else self.search_without_properties_list()
             self.add_properties_to_response()
             self.sort_answer()
+            self.good_response()
+            status = 200
+        else:
+            self.bad_response()
+            status = 400
 
-        self.good_response()
-        return self.response, 200
+        return self.response, status
 
     def delete(self):
+        if self.is_valid():
+            self.delete_phrase()
+            status = 200
+        else:
+            self.bad_response()
+            status = 400
+
+        return self.response, status
+
+    def is_valid(self):
+        """
+        проверяет валидность запроса
+        :return: True если валидный, False если нет
+        """
+        return True if self.search_word and not [l for l in self.phrase if l not in Suggest.valid_chars] else False
+
+    def delete_phrase(self):
         """
         удаляет слово из словарей "search_words_db" и "suggest_db",
         добавляет данные слова в словарь стоп-слов
@@ -80,11 +103,10 @@ class Suggest(Resource):
             self.response[f'suggest_db_{ix}'] = res
 
         Suggest.root.suggest_db[self.first_let] = br_dict
-        return self.response, 200
 
     def create_properties_list(self):
         """
-        метод ограничивает область поиска, в случае если было введено более одного слова.
+        Метод ограничивает область поиска, в случае если было введено более одного слова.
         """
         for ix, word in enumerate(self.words[:-1]):
             tokens_dict = Suggest.root.search_words_db[word[0]]
@@ -142,7 +164,7 @@ class Suggest(Resource):
 
     def search_with_properties_list(self):
         """
-        поиск среди ограниченого списка связанных слов
+        Поиск среди ограниченого списка связанных слов
         """
         tokens = process.extractBests(self.search_word, self.properties, limit=10, score_cutoff=70)
         if not tokens:
@@ -163,12 +185,10 @@ class Suggest(Resource):
 
     def search_without_properties_list(self):
         """
-        первоначальный поиск не использующий список связанных слов
+        Первоначальный поиск не использующий список связанных слов
         """
-        try:
-            search_list = Suggest.root.suggest_db[self.first_let][str(self.len_word)]
-        except KeyError:
-            return
+        search_list = Suggest.root.suggest_db[self.first_let][str(self.len_word)]
+
         tokens = process.extractBests(self.search_word, search_list.keys(), score_cutoff=50, limit=3)
 
         for token, percent in tokens:
@@ -185,13 +205,30 @@ class Suggest(Resource):
                 ]
 
     def good_response(self):
+        """
+        Составляет валидный ответ клиенту
+        """
         self.response['response'] = [{
             "suggest": word,
             "gm_name": tuple(gm)[:5],
             "rating": percent
         } for word, percent, gm in self.res_list[:10]]
 
+    def bad_response(self):
+        """
+        В случае не валидного запроса - указывает на ошибку которую допустил клиент
+        """
+        if self.phrase is None:
+            self.response['response'] = 'Argument `phrase` is not present in the request.'
+        elif not self.phrase:
+            self.response['response'] = 'Argument `phrase` is empty.'
+        else:
+            self.response['response'] = 'Argument `phrase` contains invalid characters.'
+
     def sort_answer(self):
+        """
+        Сортирует ответы по соответствию запросу
+        """
         gm_dict = {self.del_dupl_words(self.normalize_words(word)): gm_name for word, p, gm_name in self.res_list}
         res_list = process.extractBests(self.phrase, gm_dict.keys(), limit=10)
         self.res_list = [
@@ -200,6 +237,10 @@ class Suggest(Resource):
         ]
 
     def sort_gm_names(self):
+        """
+        Сортирует родовые товары по вероятности соответствия запросу
+        :return:
+        """
         self.gm_names = [gm_name[0] for gm_name in process.extractBests(
             self.phrase,
             self.gm_names,
@@ -231,6 +272,9 @@ class Suggest(Resource):
 
     @staticmethod
     def normalize_words(phrase):
+        """
+        Если в ответе есть англоязычные слова - то переводит их на латиницу
+        """
         phrase = phrase.split()
         for ix, word in enumerate(phrase):
             try:
@@ -243,7 +287,7 @@ class Suggest(Resource):
     @staticmethod
     def del_dupl_words(phrase: str):
         """
-        функция удаляет дупликаты слов в строке
+        Удаляет дупликаты слов в строке
         :param phrase: строка
         :return: строка без повторяющихся слов
         """
@@ -253,6 +297,9 @@ class Suggest(Resource):
 
     @staticmethod
     def punto_switcher(word: str):
+        """
+        Переводит англоязычные слова на русскую раскладку и удаляет знаки препинания
+        """
         word = [Suggest.pswr.get(let, let) for let in word]
         return ''.join(let for let in word if let not in Suggest.pct)
 
