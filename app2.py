@@ -117,7 +117,10 @@ class Suggest(Resource):
                     word, status = self.find_token_in_tokens_dict(tokens_dict, word, ix)
                     if not status:
                         continue
-            word_prop = tokens_dict[word]
+            try:
+                word_prop = tokens_dict[word]
+            except KeyError:
+                continue
 
             if self.properties:
                 self.properties.intersection_update(word_prop['properties'])
@@ -134,13 +137,20 @@ class Suggest(Resource):
         :return: найденое слово в списке и статус True,
         либо, если не найдено, возвращает слово обратно и статус False
         """
-        token = process.extractOne(word, list(self.properties), score_cutoff=70)
-        if token:
-            self.words[ix] = token[0]
-            self.start_phrase = ' '.join(self.words[:-1]) + ' '
-            res = (token[0], True)
-        else:
-            res = (word, False)
+        token = None
+        res = None
+        while not res:
+            token = process.extractOne(word, list(self.properties), score_cutoff=70)
+            if not token:
+                res = (word, False)
+            elif token[0] not in Suggest.root.stop_words:
+                self.words[ix] = token[0]
+                self.start_phrase = ' '.join(self.words[:-1]) + ' '
+                res = (token[0], True)
+            else:
+                self.properties.remove(token[0])
+                token = None
+
         return res
 
     def find_token_in_tokens_dict(self, tokens_dict, word, ix):
@@ -240,7 +250,6 @@ class Suggest(Resource):
     def sort_gm_names(self):
         """
         Сортирует родовые товары по вероятности соответствия запросу
-        :return:
         """
         self.gm_names = [gm_name[0] for gm_name in process.extractBests(
             self.phrase,
