@@ -2,7 +2,7 @@
 from flask import Flask
 from flask_restful import Api, Resource, reqparse
 from fuzzywuzzy import process
-from string import punctuation
+from string import punctuation, whitespace, digits
 from flask_cors import CORS
 # from pprint import pprint
 from redisworks import Root
@@ -23,7 +23,7 @@ class Suggest(Resource):
     _ru = "йцукенгшщзхъфывапролджэячсмитьбю"
     pswr = {en_let: ru_let for en_let, ru_let in zip(_en, _ru)}
 
-    valid_chars = set(_ru + ' ')  # для проверки корректности запроса
+    valid_chars = set(_ru + whitespace + digits)  # для проверки корректности запроса
 
     def __init__(self):
         parser = reqparse.RequestParser()
@@ -47,7 +47,10 @@ class Suggest(Resource):
     def get(self):
         if self.is_valid():
             self.create_properties_list()
-            self.search_with_properties_list() if self.properties else self.search_without_properties_list()
+            if not self.search_word.isdigit():
+                self.search_with_properties_list() if self.properties else self.search_without_properties_list()
+            else:
+                self.res_list.append((self.start_phrase + self.search_word, 100, self.gm_names))
             self.add_properties_to_response()
             self.sort_answer()
             self.good_response()
@@ -110,6 +113,8 @@ class Suggest(Resource):
         Метод ограничивает область поиска, в случае если было введено более одного слова.
         """
         for ix, word in enumerate(self.words[:-1]):
+            if word.isdigit():
+                continue
             tokens_dict = Suggest.root.search_words_db[word[0]]
             if word not in self.properties:
                 word, status = self.find_token_in_properties(word, ix)
