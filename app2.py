@@ -76,7 +76,8 @@ class Suggest(Resource):
         проверяет валидность запроса
         :return: True если валидный, False если нет
         """
-        return True if self.search_word and not [l for l in self.phrase if l not in Suggest.valid_chars] else False
+        return True if self.search_word and not [let for let in self.phrase if let not in Suggest.valid_chars] \
+            else False
 
     def delete_phrase(self):
         """
@@ -145,7 +146,7 @@ class Suggest(Resource):
         token = None
         res = None
         while not res:
-            token = process.extractOne(word, list(self.properties), score_cutoff=70)
+            token = process.extractOne(word, self.properties, score_cutoff=70)
             if not token:
                 res = (word, False)
             elif token[0] not in Suggest.root.stop_words:
@@ -182,17 +183,14 @@ class Suggest(Resource):
         """
         Поиск среди ограниченого списка связанных слов
         """
-        tokens = process.extractBests(self.search_word, self.properties, limit=10, score_cutoff=70)
+        tokens = self.search_token(self.search_word, list(self.properties), 70, 10)
+
         if not tokens:
             try:
                 search_list = Suggest.root.search_words_db[self.first_let]
                 search_word = search_list[process.extractOne(self.search_word, search_list.keys())[0]]['phrase']
-                tokens = process.extractBests(
-                    search_word,
-                    self.properties,
-                    limit=10,
-                    score_cutoff=70
-                )
+                tokens = self.search_token(search_word, list(self.properties), 70, 10)
+
             except Exception as ex:
                 print(ex)
         self.sort_gm_names()
@@ -204,8 +202,7 @@ class Suggest(Resource):
         Первоначальный поиск не использующий список связанных слов
         """
         search_list = Suggest.root.suggest_db[self.first_let][str(self.len_word)]
-
-        tokens = process.extractBests(self.search_word, search_list.keys(), score_cutoff=50, limit=3)
+        tokens = self.search_token(self.search_word, list(search_list.keys()), 50, 3)
 
         for token, percent in tokens:
             tokens_list = search_list[token[:self.len_word]]
@@ -219,6 +216,24 @@ class Suggest(Resource):
                      tuple(t_list[w]['gm_name']))
                     for w in t_list.keys() if w not in Suggest.root.stop_words
                 ]
+
+    def search_token(self, search_word: str, search_list: list, percent: int, limit: int):
+        """
+        метод для поиска токена по заданном списку
+        :param search_word: токен
+        :param search_list: список в котором производится поиск
+        :param percent: минимальный процент "похожести"
+        :param limit: максимальное число токенов
+        :return: список токенов формата [[токен, процент], ...]
+        """
+        if search_word in self.root.stop_words and search_word in search_list:
+            search_list.remove(search_word)
+
+        if search_word in search_list:
+            tokens = [[search_word, 100]]
+        else:
+            tokens = process.extractBests(search_word, search_list, score_cutoff=percent, limit=limit)
+        return tokens
 
     def good_response(self):
         """
