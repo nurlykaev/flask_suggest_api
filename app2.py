@@ -6,6 +6,7 @@ from string import punctuation, whitespace, digits
 from flask_cors import CORS
 # from pprint import pprint
 from redisworks import Root
+# import logging
 
 app = Flask(__name__)
 api = Api(app)
@@ -27,8 +28,10 @@ class Suggest(Resource):
 
     def __init__(self):
         parser = reqparse.RequestParser()
+        parser.add_argument('count', type=int)
         parser.add_argument('phrase', type=str)
         self.phrase = parser.parse_args()['phrase']
+        self.count = parser.parse_args()['count'] or 10
         if self.phrase:
             self.phrase = self.punto_switcher(self.phrase.lower())
             self.words = self.phrase.split()
@@ -135,7 +138,7 @@ class Suggest(Resource):
                 self.properties.update(word_prop['properties'])
                 self.gm_names.update(word_prop['gm_name'])
 
-    def find_token_in_properties(self, word, ix):
+    def find_token_in_properties(self, word: str, ix: int):
         """
         производит поиск слова среди списка связанных слов
         :param word: поисковое слово
@@ -143,7 +146,6 @@ class Suggest(Resource):
         :return: найденое слово в списке и статус True,
         либо, если не найдено, возвращает слово обратно и статус False
         """
-        token = None
         res = None
         while not res:
             token = process.extractOne(word, self.properties, score_cutoff=70)
@@ -155,11 +157,10 @@ class Suggest(Resource):
                 res = (token[0], True)
             else:
                 self.properties.remove(token[0])
-                token = None
 
         return res
 
-    def find_token_in_tokens_dict(self, tokens_dict, word, ix):
+    def find_token_in_tokens_dict(self, tokens_dict: dict, word: str, ix: int):
         """
         Производит поиск слова в общем списке всех слов хранящихся в саджесте
         :param tokens_dict: словарь слов в котором проводится поиск
@@ -183,13 +184,13 @@ class Suggest(Resource):
         """
         Поиск среди ограниченого списка связанных слов
         """
-        tokens = self.search_token(self.search_word, list(self.properties), 70, 10)
+        tokens = self.search_token(self.search_word, list(self.properties), 70, self.count)
 
         if not tokens:
             try:
                 search_list = Suggest.root.search_words_db[self.first_let]
                 search_word = search_list[process.extractOne(self.search_word, search_list.keys())[0]]['phrase']
-                tokens = self.search_token(search_word, list(self.properties), 70, 10)
+                tokens = self.search_token(search_word, list(self.properties), 70, self.count)
 
             except Exception as ex:
                 print(ex)
@@ -243,7 +244,7 @@ class Suggest(Resource):
             "suggest": word,
             "gm_name": tuple(gm)[:5],
             "rating": percent
-        } for word, percent, gm in self.res_list[:10]]
+        } for word, percent, gm in self.res_list[:self.count]]
 
     def bad_response(self):
         """
@@ -261,10 +262,9 @@ class Suggest(Resource):
         Сортирует ответы по соответствию запросу
         """
         gm_dict = {self.del_dupl_words(self.normalize_words(word)): gm_name for word, p, gm_name in self.res_list}
-        res_list = process.extractBests(self.phrase, gm_dict.keys(), limit=10)
+        res_list = process.extractBests(self.phrase, gm_dict.keys(), limit=self.count)
         self.res_list = [
-            (word, percent, gm_dict[word])
-            for word, percent in res_list
+            (word, percent, gm_dict[word]) for word, percent in res_list
         ]
 
     def sort_gm_names(self):
@@ -280,11 +280,16 @@ class Suggest(Resource):
 
     def add_properties_to_response(self):
         """
-        Если ответов меньше 10, добавляет возможные варианты уточнения
+        Если ответов меньше заданного числа(self.count), добавляет возможные варианты уточнения
         """
         for phrase, percent, gm_name in self.res_list:
             word = phrase.split()[-1]
-            properties = set(Suggest.root.search_words_db[self.first_let].get(word, dict()).get('properties', set()))
+            if not word.isdigit():
+                properties = set(
+                    Suggest.root.search_words_db[self.first_let].get(word, dict()).get('properties', set())
+                )
+            else:
+                properties = set()
             properties = properties & self.properties if self.properties and properties \
                 else properties | self.properties
 
@@ -296,12 +301,12 @@ class Suggest(Resource):
                 )
             ) for prop in properties if prop not in Suggest.root.stop_words]
 
-            if len(self.res_list) > 9:
-                self.res_list = self.res_list[:10]
+            if len(self.res_list) >= self.count:
+                self.res_list = self.res_list[:self.count]
                 return
 
     @staticmethod
-    def normalize_words(phrase):
+    def normalize_words(phrase: str):
         """
         Если в ответе есть англоязычные слова - то переводит их на латиницу
         """
@@ -338,6 +343,6 @@ api.add_resource(Suggest, '/suggest', '/suggest/')
 
 if __name__ == '__main__':
     try:
-        app.run(debug=False)
+        app.run()
     finally:
         pass
