@@ -6,7 +6,8 @@ from string import punctuation, whitespace, digits
 from flask_cors import CORS
 # from pprint import pprint
 from redisworks import Root
-# import logging
+import logging
+from typing import Dict, List, Set
 
 app = Flask(__name__)
 api = Api(app)
@@ -24,28 +25,34 @@ class Suggest(Resource):
     _ru = "йцукенгшщзхъфывапролджэячсмитьбю"
     pswr = {en_let: ru_let for en_let, ru_let in zip(_en, _ru)}
 
+    FORMAT = '%(asctime)s %(message)s'
+    logging.basicConfig(format=FORMAT)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+
     valid_chars = set(_ru + whitespace + digits)  # для проверки корректности запроса
 
     def __init__(self):
         parser = reqparse.RequestParser()
         parser.add_argument('count', type=int)
         parser.add_argument('phrase', type=str)
-        self.phrase = parser.parse_args()['phrase']
-        self.count = parser.parse_args()['count'] or 10
+        self.phrase: str = parser.parse_args()['phrase']
+        self.phrase: str = self.punto_switcher(self.phrase.lower()) if self.phrase is not None else self.phrase
+        self.count: int = parser.parse_args()['count'] or 10
         if self.phrase:
-            self.phrase = self.punto_switcher(self.phrase.lower())
-            self.words = self.phrase.split()
-            self.search_word = self.words[-1]
-            self.first_let = self.search_word[0]
-            self.len_word = min(len(self.search_word), 9)
-            self.start_phrase = ' '.join(self.words[:-1]) + ' ' if self.words[:-1] else ''
-            self.properties = set()
-            self.gm_names = set()
+            self.logger.debug(self.phrase)
+            self.words: List[str] = self.phrase.split()
+            self.search_word: str = self.words[-1]
+            self.first_let: str = self.search_word[0]
+            self.len_word: int = min(len(self.search_word), 9)
+            self.start_phrase: str = ' '.join(self.words[:-1]) + ' ' if self.words[:-1] else ''
+            self.properties: Set[str] = set()
+            self.gm_names: Set[str] = set()
         else:
-            self.search_word = ''
+            self.search_word: str = ''
 
-        self.res_list = list()
-        self.response = dict()
+        self.res_list: List[str] = list()
+        self.response: Dict[str: (str, list, int)] = dict()
 
     def get(self):
         if self.is_valid():
@@ -193,7 +200,7 @@ class Suggest(Resource):
                 tokens = self.search_token(search_word, list(self.properties), 70, self.count)
 
             except Exception as ex:
-                print(ex)
+                self.logger.error(ex)
         self.sort_gm_names()
         self.res_list = [[f'{self.start_phrase} {token}', percent, tuple(self.gm_names)]
                          for token, percent in tokens if token not in self.root.stop_words]
@@ -212,9 +219,9 @@ class Suggest(Resource):
             for t in token:
                 t_list = tokens_list[t[0]]
                 self.res_list += [
-                    (self.start_phrase + t_list[w]['phrase'],
+                    (self.start_phrase + t_list['phrase'],
                      percent,
-                     tuple(t_list[w]['gm_name']))
+                     tuple(t_list['gm_name']))
                     for w in t_list.keys() if w not in Suggest.root.stop_words
                 ]
 
@@ -245,27 +252,37 @@ class Suggest(Resource):
             "gm_name": tuple(gm)[:5],
             "rating": percent
         } for word, percent, gm in self.res_list[:self.count]]
+        self.logger.debug(self.response)
 
     def bad_response(self):
         """
         В случае не валидного запроса - указывает на ошибку которую допустил клиент
         """
         if self.phrase is None:
-            self.response['response'] = 'Argument `phrase` is not present in the request.'
+            message = 'Аргумент `phrase` не был передан в запросе.'
         elif not self.phrase:
-            self.response['response'] = 'Argument `phrase` is empty.'
+            message = 'Аргумент `phrase` пуст.'
         else:
-            self.response['response'] = 'Argument `phrase` contains invalid characters.'
+            message = 'Аргумент `phrase` содержит недопустимые символы.'
+        self.logger.debug(message)
+        self.response['response'] = message
 
     def sort_answer(self):
         """
         Сортирует ответы по соответствию запросу
         """
-        gm_dict = {self.del_dupl_words(self.normalize_words(word)): gm_name for word, p, gm_name in self.res_list}
+        gm_dict = {self.del_dupl_words(self.normalize_words(word)): gm_name for word, p, gm_name in self.res_list[1:]}
         res_list = process.extractBests(self.phrase, gm_dict.keys(), limit=self.count)
-        self.res_list = [
-            (word, percent, gm_dict[word]) for word, percent in res_list
-        ]
+        self.res_list = [(word, percent, gm_dict[word]) for word, percent in res_list]
+
+    # def sort_answer(self):
+    #     """
+    #     Сортирует ответы по соответствию запросу
+    #     """
+    #     self.res_list = [
+    #         (self.del_dupl_words(self.normalize_words(word)), percent, gm_name)
+    #         for word, percent, gm_name in self.res_list[:self.count]
+    #     ]
 
     def sort_gm_names(self):
         """
@@ -290,8 +307,8 @@ class Suggest(Resource):
                 )
             else:
                 properties = set()
-            properties = properties & self.properties if self.properties and properties \
-                else properties | self.properties
+            properties = list(properties & self.properties) if self.properties and properties \
+                else list(properties | self.properties)
 
             [self.res_list.append(
                 (
@@ -299,7 +316,7 @@ class Suggest(Resource):
                     percent,
                     gm_name
                 )
-            ) for prop in properties if prop not in Suggest.root.stop_words]
+            ) for prop in properties[:10-len(self.res_list)] if prop not in Suggest.root.stop_words]
 
             if len(self.res_list) >= self.count:
                 self.res_list = self.res_list[:self.count]
