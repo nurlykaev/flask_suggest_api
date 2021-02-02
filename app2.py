@@ -4,7 +4,6 @@ from flask_restful import Api, Resource, reqparse
 from fuzzywuzzy import process
 from string import punctuation, whitespace, digits
 from flask_cors import CORS
-# from pprint import pprint
 from redisworks import Root
 import logging
 from typing import Dict, List, Set
@@ -109,11 +108,11 @@ class Suggest(Resource):
         for ix in range(1, 10):
             str_ix = str(ix)
             try:
-                br_dict[str_ix][self.phrase[:ix]].pop(self.phrase)
+                br_dict[str_ix][self.phrase[:ix]].remove(self.phrase)
                 if not br_dict[str_ix][self.phrase[:ix]]:
                     br_dict[str_ix].pop(self.phrase[:ix])
                 res = 'CORRECT'
-            except KeyError:
+            except (ValueError, KeyError):
                 res = 'NOT CORRECT'
             self.response[f'suggest_db_{ix}'] = res
 
@@ -137,7 +136,6 @@ class Suggest(Resource):
                 word_prop = tokens_dict[word]
             except KeyError:
                 continue
-
             if self.properties:
                 self.properties.intersection_update(word_prop['properties'])
                 self.gm_names.intersection_update(word_prop['gm_name'])
@@ -214,16 +212,18 @@ class Suggest(Resource):
 
         for token, percent in tokens:
             tokens_list = search_list[token[:self.len_word]]
-            token = process.extractBests(self.search_word, tokens_list.keys(), limit=3, score_cutoff=50)
+            token = process.extractBests(self.search_word, tokens_list, limit=3, score_cutoff=50)
+            self.logger.debug(msg=[token, tokens_list])
 
-            for t in token:
-                t_list = tokens_list[t[0]]
-                self.res_list += [
-                    (self.start_phrase + t_list['phrase'],
-                     percent,
-                     tuple(t_list['gm_name']))
-                    for w in t_list.keys() if w not in Suggest.root.stop_words
-                ]
+            for word, percent in token:
+                if word not in self.root.stop_words:
+                    self.res_list.append(
+                        (
+                            self.start_phrase + word,
+                            percent,
+                            self.gm_names or tuple(Suggest.root.search_words_db[word[0]][word]['gm_name'])
+                        )
+                    )
 
     def search_token(self, search_word: str, search_list: list, percent: int, limit: int):
         """
@@ -274,15 +274,6 @@ class Suggest(Resource):
         gm_dict = {self.del_dupl_words(self.normalize_words(word)): gm_name for word, p, gm_name in self.res_list[1:]}
         res_list = process.extractBests(self.phrase, gm_dict.keys(), limit=self.count)
         self.res_list = [(word, percent, gm_dict[word]) for word, percent in res_list]
-
-    # def sort_answer(self):
-    #     """
-    #     Сортирует ответы по соответствию запросу
-    #     """
-    #     self.res_list = [
-    #         (self.del_dupl_words(self.normalize_words(word)), percent, gm_name)
-    #         for word, percent, gm_name in self.res_list[:self.count]
-    #     ]
 
     def sort_gm_names(self):
         """
