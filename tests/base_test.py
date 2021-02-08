@@ -3,15 +3,14 @@ import unittest
 
 
 class SuggestTestCase(unittest.TestCase):
-
     def setUp(self):
         self.app = app
         self.app.config['TESTING'] = True
         self.client = self.app.test_client()
         self.get_requests = [
             {'phrase': 'rbhg', 'count': 10, 'status': 200},
-            {'phrase': 'рейк нап', 'count': 2, 'status': 200},
-            {'phrase': 'гипскор', 'count': '', 'status': 200},
+            {'phrase': 'рейкf нап', 'count': 2, 'status': 200},
+            {'phrase': 'гипскор', 'count': '', 'status': 400},
             {'phrase': '', 'count': 2, 'status': 400},
             {'phrase': 'кирп шам огн', 'count': 0, 'status': 200},
         ]
@@ -23,7 +22,7 @@ class SuggestTestCase(unittest.TestCase):
     def test_get_response(self):
         for request in self.get_requests:
             phrase, count, status = request['phrase'], request['count'], request['status']
-            response = self.client.get(f'/suggest?phrase={phrase}')
+            response = self.client.get(f'/suggest?phrase={phrase}&count={count}')
             self.assertEqual(response.status_code, status)
             if status == 200:
                 response = response.get_json()['response']
