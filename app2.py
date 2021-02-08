@@ -132,11 +132,10 @@ class Suggest(Resource):
                     word, status = self.find_token_in_tokens_dict(tokens_dict, word, ix)
                     if not status:
                         continue
-            try:
-                word_prop = tokens_dict[word]
-            except KeyError:
+            word_prop = tokens_dict.get(word, False)
+            if not word_prop:
                 continue
-            if self.properties:
+            elif self.properties:
                 self.properties.intersection_update(word_prop['properties'])
                 self.gm_names.intersection_update(word_prop['gm_name'])
             else:

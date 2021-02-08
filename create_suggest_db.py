@@ -4,6 +4,8 @@ from collections import defaultdict
 from hunspell import Hunspell
 from redisworks import Root
 
+PATH_CSV_FILES = f'{os.getcwd()}\\csv_to_suggest\\'
+
 
 class SuggestDB:
     _ru = 'йцукенгшщзхъфывапролджэячсмитьбю.'
@@ -89,8 +91,6 @@ class SuggestDB:
                 else:
                     self.stop_words.add(prop)
 
-PATH_CSV_FILES = f'{os.getcwd()}\\csv_to_suggest\\'
-
 
 def main(path: str, file_name: str):
     with open(path + file_name, 'r', encoding='utf-8') as csv_file:
@@ -100,13 +100,11 @@ def main(path: str, file_name: str):
                 continue
             db = SuggestDB(**line)
             db()
-            # pprint(db.suggest_db)
 
 
 if __name__ == '__main__':
     root = Root(db=1)
     for file_name in os.listdir(PATH_CSV_FILES):
-        print(file_name)
         main(PATH_CSV_FILES, file_name)
     root.suggest_db = SuggestDB.suggest_db.copy()
     root.search_words_db = SuggestDB.search_words.copy()
