@@ -200,7 +200,7 @@ class Suggest(Resource):
             except Exception as ex:
                 self.logger.error(ex)
         self.sort_gm_names()
-        self.res_list = [[f'{self.start_phrase} {token}', percent, tuple(self.gm_names)]
+        self.res_list = [[self.start_phrase + token, percent, tuple(self.gm_names)]
                          for token, percent in tokens if token not in self.root.stop_words]
 
     def search_without_properties_list(self):
@@ -217,13 +217,10 @@ class Suggest(Resource):
 
             for word, percent in token:
                 if word not in self.root.stop_words:
-                    self.res_list.append(
-                        (
-                            self.start_phrase + word,
-                            percent,
-                            self.gm_names or tuple(Suggest.root.search_words_db[word[0]][word]['gm_name'])
-                        )
-                    )
+                    word_prop = process.extractOne(word, Suggest.root.search_words_db[word[0]].keys())[0]
+                    gm_names = Suggest.root.search_words_db[word[0]][word_prop]['gm_name']
+
+                    self.res_list.append((self.start_phrase + word, percent, gm_names))
 
     def search_token(self, search_word: str, search_list: list, percent: int, limit: int):
         """

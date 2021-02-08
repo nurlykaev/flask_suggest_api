@@ -13,6 +13,7 @@ class SuggestDB:
 
     suggest_db = defaultdict(dict)
     search_words = defaultdict(dict)
+    stop_words = set()
     steming = Hunspell('E:\\py\\ru_RU').stem
 
     def __init__(self, **kwargs):
@@ -28,7 +29,6 @@ class SuggestDB:
             [self.properties.extend(ngram.split()) for ngram in self.ngrams]
             [self.properties.remove(val) for val in self.properties
              if not self.is_valid(val) or self.properties.count(val) > 1]
-            # pprint(self.__dict__)
 
     def __call__(self):
         if self.gm_name:
@@ -66,16 +66,19 @@ class SuggestDB:
     def create_gm_suggest_db(self):
         for word in self.gm_list:
             first_let = word[0]
-            self.add_phrase(mut_dict=self.search_words[first_let], word=word)
-            word = self.get_stem_word(word)
-            for ix in range(1, 10):
-                str_ix = str(ix)
-                self.suggest_db[first_let][str_ix] = self.suggest_db[first_let].get(str_ix, dict())
+            if len(word) <= 2:
+                self.stop_words.add(word)
+            else:
+                self.add_phrase(mut_dict=self.search_words[first_let], word=word)
+                word = self.get_stem_word(word)
+                for ix in range(1, 10):
+                    str_ix = str(ix)
+                    self.suggest_db[first_let][str_ix] = self.suggest_db[first_let].get(str_ix, dict())
 
-                self.suggest_db[first_let][str_ix][word[:ix]] = self.suggest_db[first_let][str_ix].get(word[:ix],
-                                                                                                       list())
-                self.suggest_db[first_let][str_ix][word[:ix]] += [word] \
-                    if word not in self.suggest_db[first_let][str_ix][word[:ix]] else []
+                    self.suggest_db[first_let][str_ix][word[:ix]] = self.suggest_db[first_let][str_ix].get(word[:ix],
+                                                                                                           list())
+                    self.suggest_db[first_let][str_ix][word[:ix]] += [word] \
+                        if word not in self.suggest_db[first_let][str_ix][word[:ix]] else []
 
     def add_properties(self):
         for prop in self.properties:
@@ -83,6 +86,8 @@ class SuggestDB:
                 pswr_prop = self.punto_switcher(prop)
                 if self.is_valid(pswr_prop):
                     self.add_phrase(mut_dict=self.search_words[pswr_prop[0]], word=prop, pswr_word=pswr_prop)
+                else:
+                    self.stop_words.add(prop)
 
 PATH_CSV_FILES = f'{os.getcwd()}\\csv_to_suggest\\'
 
@@ -105,4 +110,5 @@ if __name__ == '__main__':
         main(PATH_CSV_FILES, file_name)
     root.suggest_db = SuggestDB.suggest_db.copy()
     root.search_words_db = SuggestDB.search_words.copy()
+    root.stop_words = SuggestDB.stop_words.copy()
 
