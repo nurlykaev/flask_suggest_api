@@ -10,7 +10,7 @@ class SuggestTestCase(unittest.TestCase):
         self.client = self.app.test_client()
         self.get_requests = [
             {'phrase': 'rbhg', 'count': 10, 'status': 200},
-            {'phrase': 'рейк нап', 'count': 8, 'status': 200},
+            {'phrase': 'рейк нап', 'count': 2, 'status': 200},
             {'phrase': 'гипскор', 'count': '', 'status': 200},
             {'phrase': '', 'count': 2, 'status': 400},
             {'phrase': 'кирп шам огн', 'count': 0, 'status': 200},
@@ -26,7 +26,9 @@ class SuggestTestCase(unittest.TestCase):
             response = self.client.get(f'/suggest?phrase={phrase}')
             self.assertEqual(response.status_code, status)
             if status == 200:
-                self.assertLessEqual(len(response.get_json()['response']), count or 10)
+                response = response.get_json()['response']
+                self.assertLessEqual(len(response), count or 10)
+                self.assertTrue(response)
 
     def test_del_response(self):
         for request in self.del_requests:

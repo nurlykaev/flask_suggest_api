@@ -273,7 +273,7 @@ class Suggest(Resource):
         """
         gm_dict = {self.del_dupl_words(self.normalize_words(word)): gm_name for word, p, gm_name in self.res_list[1:]}
         res_list = process.extractBests(self.phrase, gm_dict.keys(), limit=self.count)
-        self.res_list = [(word, percent, gm_dict[word]) for word, percent in res_list]
+        self.res_list = self.res_list[:1] + [(word, percent, gm_dict[word]) for word, percent in res_list]
 
     def sort_gm_names(self):
         """
